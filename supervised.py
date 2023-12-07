@@ -153,7 +153,6 @@ def crop_face(image):
 def preprocess_image_antispoof(image):
     image = crop_face(image)
     image = cv2.resize(image, (640, 640))  # Resize image
-    cv2.imshow("image", image)
     return image
 
 
@@ -203,6 +202,8 @@ def register_user(user_id):
 
         antispoof_label.configure(
             text="AntiSpoofed: False", text_color="#FF0000")
+        liveness_label.configure(
+            text="Liveness: False", text_color="#FF0000")
         register_fill.pack_forget()
         buttonRegister.pack_forget()
 
@@ -270,6 +271,9 @@ def check_in():
 
         antispoof_label.configure(
             text="AntiSpoofed: False", text_color="#FF0000")
+
+        liveness_label.configure(
+            text="Liveness: False", text_color="#FF0000")
 
     except Exception as e:
         status_label.configure(text=f"Error during recognition: {str(e)}")
