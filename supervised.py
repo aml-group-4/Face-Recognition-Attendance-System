@@ -137,10 +137,14 @@ def update_frame():
                     antispoof_label.configure(
                         text="Antispoof: True", text_color="#009946")
                     real_face = True
+                    buttonRegister.configure(state="normal")
+                    buttonCheckIn.configure(state="normal")
                 else:
                     antispoof_label.configure(
                         text="Antispoof: False", text_color="#FF0000")
                     real_face = False
+                    buttonRegister.configure(state="disabled")
+                    buttonCheckIn.configure(state="disabled")
 
         # Convert the frame to PhotoImage
         cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
