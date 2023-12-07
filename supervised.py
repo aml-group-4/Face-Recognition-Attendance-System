@@ -56,9 +56,7 @@ def register_interface():
 
 
 def main_interface():
-    global buttonRegister, buttonCheckIn, buttonBack
-
-    # disable the button
+    global buttonRegister, buttonCheckIn, buttonBack, real_face
 
     buttonRegister = create_button(
         button_frame, "Register", register_interface, "#009946", "#007D39", "white")
@@ -125,11 +123,9 @@ def update_frame():
             antispoof_label.configure(
                 text="Checking Spoof Face ...", text_color="#FF0000")
 
-            live_image = gr.access_verified_image()
-
             # check whether the face is spoof
             antispoof_results = model(
-                preprocess_image_antispoof(live_image))
+                preprocess_image_antispoof(frame))
             # View results
             thres = 0.7
             for r in antispoof_results:
@@ -137,14 +133,18 @@ def update_frame():
                     antispoof_label.configure(
                         text="Antispoof: True", text_color="#009946")
                     real_face = True
-                    buttonRegister.configure(state="normal")
-                    buttonCheckIn.configure(state="normal")
+
                 else:
                     antispoof_label.configure(
                         text="Antispoof: False", text_color="#FF0000")
                     real_face = False
-                    buttonRegister.configure(state="disabled")
-                    buttonCheckIn.configure(state="disabled")
+
+        if real_face == False:
+            buttonRegister.configure(state="disabled")
+            buttonCheckIn.configure(state="disabled")
+        else:
+            buttonRegister.configure(state="normal")
+            buttonCheckIn.configure(state="normal")
 
         # Convert the frame to PhotoImage
         cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
@@ -173,19 +173,24 @@ def crop_face(image):
         gray_image, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40)
     )
 
-    for (x, y, w, h) in face:
+    if len(face) == 0:
+        for (x, y, w, h) in face:
 
-        # crop the detected face region
-        face_img = image[y - margin_y:y + h + margin_y,
-                         x - margin_x:x + w + margin_x]
+            # crop the detected face region
+            face_img = image[y - margin_y:y + h + margin_y,
+                             x - margin_x:x + w + margin_x]
 
-        return face_img
+            return face_img
+    else:
+        return None
 
 
 def preprocess_image_antispoof(image):
-    image = crop_face(image)
-    image = cv2.resize(image, (640, 640))  # Resize image
-    return image
+    face_img = crop_face(image)
+    if (face_img is None):
+        return image
+    # face_img = cv2.resize(face_img, (640, 640))  # Resize image
+    return face_img
 
 
 def preprocess_image(image):
@@ -200,7 +205,7 @@ def generate_embedding(image):
 
 
 def register_user(user_id):
-    global status_label, buttonRegister, register_fill
+    global status_label, buttonRegister, register_fill, real_face
 
     try:
         # ret, frame = cap.read()
@@ -209,11 +214,8 @@ def register_user(user_id):
         #     return
 
         frame = gr.access_verified_image()
+        real_face = False
 
-        if (real_face == False):
-            status_label.configure(
-                text="Please redo the challenge again.")
-            main_interface()
         # if (frame is None):
         #     status_label.configure(text="Please complete the challenge first.")
         #     return
@@ -244,6 +246,7 @@ def register_user(user_id):
         buttonRegister.pack_forget()
 
         main_interface()
+
     except Exception as e:
         status_label.configure(text=f"Error during registration: {str(e)}")
         print(f"Error during registration: {str(e)}")
@@ -257,7 +260,7 @@ def update_check_in_students_label():
 
 
 def check_in():
-    global status_label, checked_in_students
+    global status_label, checked_in_students, real_face
 
     try:
         # ret, frame = cap.read()
@@ -266,11 +269,8 @@ def check_in():
         #     return
 
         frame = gr.access_verified_image()
+        real_face = False
 
-        if (real_face == False):
-            status_label.configure(
-                text="Please redo the challenge again.")
-            main_interface()
         # if (frame is None):
         #     status_label.configure(text="Please complete the challenge first.")
         #     return
