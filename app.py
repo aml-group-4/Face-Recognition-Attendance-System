@@ -39,8 +39,11 @@ title_label = ctk.CTkLabel(main_frame, text="Face Recognition Attendance System"
 title_label.pack(pady=(50, 100))
 
 # Buttons inside main_frame
-buttonSupervised = create_button(main_frame, "Supervised model", supervised_model, "#FFC300", "#E9B200", "black")
-buttonSupervised.pack(pady=10)
+buttonClassificationSupervised = create_button(main_frame, "Supervised model 1", supervised_model, "#FFC300", "#E9B200", "black")
+buttonClassificationSupervised.pack(pady=10)
+
+buttonTripletSupervised = create_button(main_frame, "Supervised model 2", supervised_model, "#FFC300", "#E9B200", "black")
+buttonTripletSupervised.pack(pady=10)
 
 buttonUnsupervised = create_button(main_frame, "Unsupervised model", unsupervised_model, "#204BA4", "#022367", "white")
 buttonUnsupervised.pack(pady=10)
