@@ -9,12 +9,15 @@ from scipy.spatial.distance import cosine
 import tensorflow as tf
 import numpy as np
 from ultralytics import YOLO
+from keras.applications import resnet
+from keras import layers, Model
 import GestureRecognition
 
 ################### INTERFACE ###################
 # BUTTONS
 FontManager.load_font("AppleGaramond.ttf")
 gr = GestureRecognition.GestureRecognition()
+none_spoofed_image = None
 # Load the antispoofing model
 model = YOLO('antispoof.pt')
 # Load the face classifier
@@ -78,9 +81,10 @@ def main_interface():
         buttonCheckIn.configure(state="normal")
 
 
-def update_total_students_label():
-    total_students_label.configure(
-        text=f"Total Students: {len(checked_in_students)}")
+def update_total_employees_label():
+    total_employees_label.configure(
+        text=f"Total Employees: {len(checked_in_employees)}")
+
 
 
 def back():
@@ -155,12 +159,45 @@ def update_frame():
         video_label.after(10, update_frame)  # Continue updating the frame
 
 
-################### SUPERVISED MODEL ###################
+################### UNSUPERVISED MODEL ###################
 RECOGNITION_THRESHOLD = 0.3
 
-embedding_model = tf.keras.models.load_model('supervised_embedding.h5')
+def create_embedding_model():
+    base_cnn = resnet.ResNet50(weights="imagenet", input_shape=(200, 200, 3), include_top=False)
+
+    flatten = layers.Flatten()(base_cnn.output)
+    dense1 = layers.Dense(512, activation="relu")(flatten)
+    dense1 = layers.BatchNormalization()(dense1)
+    dense2 = layers.Dense(256, activation="relu")(dense1)
+    dense2 = layers.BatchNormalization()(dense2)
+    output = layers.Dense(256)(dense2)
+
+    embedding_model = Model(base_cnn.input, output, name="Embedding")
+
+    trainable = False
+    for layer in base_cnn.layers:
+        if layer.name == "conv5_block1_out":
+            trainable = True
+        layer.trainable = trainable
+
+    return embedding_model
+
+# Load the embedding model
+embedding_model = create_embedding_model()
+embedding_model.load_weights('unsupervised_embedding_jun.h5')
 
 user_embeddings = {}
+
+
+def preprocess_image(image):
+    image = cv2.resize(image, (200, 200))  # Resize image to 200x200
+    image = tf.keras.applications.resnet50.preprocess_input(image)
+    return np.expand_dims(image, axis=0)
+
+
+def generate_embedding(image):
+    preprocessed_image = preprocess_image(image)
+    return embedding_model.predict(preprocessed_image)[0]
 
 
 def crop_face(image):
@@ -191,18 +228,6 @@ def preprocess_image_antispoof(image):
         return image
     # face_img = cv2.resize(face_img, (640, 640))  # Resize image
     return face_img
-
-
-def preprocess_image(image):
-    image = cv2.resize(image, (375, 375))  # Resize image
-    image = tf.keras.applications.resnet50.preprocess_input(image)
-    return np.expand_dims(image, axis=0)
-
-
-def generate_embedding(image):
-    preprocessed_image = preprocess_image(image)
-    return embedding_model.predict(preprocessed_image)[0]
-
 
 def register_user(user_id):
     global status_label, buttonRegister, register_fill, real_face
@@ -251,16 +276,13 @@ def register_user(user_id):
         status_label.configure(text=f"Error during registration: {str(e)}")
         print(f"Error during registration: {str(e)}")
 
-
-def update_check_in_students_label():
-    # Join all checked-in student names with a newline character
-    students_list_str = '\n'.join(checked_in_students)
-    check_in_students_label.configure(
-        text=f"Check-In Students:\n{students_list_str}")
-
+def update_check_in_employees_label():
+    # Join all checked-in employee names with a newline character
+    employees_list_str = '\n'.join(checked_in_employees)
+    check_in_employees_label.configure(text=f"Check-In Employees:\n{employees_list_str}")
 
 def check_in():
-    global status_label, checked_in_students, real_face
+    global status_label, checked_in_employees, real_face
 
     try:
         # ret, frame = cap.read()
@@ -301,9 +323,9 @@ def check_in():
 
         # Update status label based on recognition result
         if min_distance <= RECOGNITION_THRESHOLD:
-            checked_in_students.add(recognized_user_id)
-            update_total_students_label()
-            update_check_in_students_label()  # Update the check-in students label
+            checked_in_employees.add(recognized_user_id)
+            update_total_employees_label()
+            update_check_in_employees_label()  # Update the check-in employees label
             status_label.configure(
                 text=f"Recognized User: {recognized_user_id}")
         else:
@@ -321,7 +343,7 @@ def check_in():
 
 ################### APP IMPLEMENTATION ###################
 app = ctk.CTk()
-app.title("Face Recognition Attendance System")
+app.title("Face Recognition Attendance System | Unsupervised Model by Jun")
 app.geometry("1440x850")
 ctk.set_appearance_mode("light")
 
@@ -331,49 +353,48 @@ cap = cv2.VideoCapture(0)
 main_frame = ctk.CTkFrame(app, fg_color='#FFF8E9')
 main_frame.pack(expand=True, fill='both')
 video_label = tk.Label(main_frame, width=930, height=650)
-video_label.grid(row=0, column=0, padx=10, rowspan=3, columnspan=2)
+video_label.grid(row=0, column=0, padx=10, rowspan=12, columnspan=2)
 
 
-# TOTAL STUDENT
-checked_in_students = set()
+# TOTAL EMPLOYEES
+checked_in_employees = set()
 
-total_students_label = ctk.CTkLabel(
-    main_frame, text=f"Total Students: {len(checked_in_students)}", font=("Apple Garamond", font_size_total))
-# Positioned beside the video label
-total_students_label.grid(row=0, column=2, sticky="nw", padx=10)
+# TOTAL EMPLOYEES
+total_employees_label = ctk.CTkLabel(
+    main_frame, text=f"Total Employees: {len(checked_in_employees)}", font=("Apple Garamond", font_size_total))
+total_employees_label.grid(row=0, column=2, sticky="nw", padx=10)
 
-
-check_in_students_label = ctk.CTkLabel(
-    main_frame, text=f"Check-In Students: ", font=("Arial", 40))
-# Positioned beside the video label
-check_in_students_label.grid(row=1, column=2, sticky="nw", padx=10)
-
-antispoof_label = ctk.CTkLabel(
-    main_frame, text="Antispoof: False", font=("Apple Garamond", font_size_total), text_color="#FF0000")
-antispoof_label.grid(row=1, column=2, sticky="sw", padx=10)
+# CHECK-IN EMPLOYEES
+check_in_employees_label = ctk.CTkLabel(
+    main_frame, text=f"Check-In Employees: ", font=("Arial", 40))
+check_in_employees_label.grid(row=1, column=2, sticky="nw", padx=10, pady=10)
 
 liveness_label = ctk.CTkLabel(
     main_frame, text="Liveness: False", font=("Apple Garamond", font_size_total), text_color="#FF0000")
-liveness_label.grid(row=2, column=2, sticky="sw", padx=10)
+liveness_label.grid(row=10, column=2, sticky="sw", padx=10)
+
+antispoof_label = ctk.CTkLabel(
+    main_frame, text="AntiSpoofed: False", font=("Apple Garamond", font_size_total), text_color="#FF0000")
+antispoof_label.grid(row=11, column=2, sticky="sw", padx=10)
+
 
 # Format the gesture challenge list
-formatted_gesture_challenge = ', '.join(
-    [gesture.replace('_', ' ') for gesture in gr.gesture_challenge_list])
+formatted_gesture_challenge = ', '.join([gesture.replace('_', ' ') for gesture in gr.gesture_challenge_list])
 
 # Create the label with the formatted text
 challenge_label = ctk.CTkLabel(
     main_frame, text="Challenge: " + formatted_gesture_challenge, font=("Apple Garamond", 30))
-challenge_label.grid(row=3, column=1, sticky="sw", padx=10)
+challenge_label.grid(row=13, column=1, sticky="sw", padx=10)
 
 # STATUS
 status_label = ctk.CTkLabel(main_frame, text="", font=("Arial", font_size))
 # Adjust grid positioning as needed
-status_label.grid(row=5, column=0, padx=10, columnspan=2)
+status_label.grid(row=14, column=0, padx=10, columnspan=2)
 
 
 # BUTTON FRAME
 button_frame = ctk.CTkFrame(main_frame, fg_color='#FFF8E9')
-button_frame.grid(row=6, column=0, columnspan=3, pady=20)
+button_frame.grid(row=15, column=0, columnspan=3, pady=20)
 main_interface()
 
 

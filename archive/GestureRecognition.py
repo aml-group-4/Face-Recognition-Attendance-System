@@ -69,6 +69,7 @@ class GestureRecognition:
 
     def access_verified_image(self):
         temp = self.verified_image
+        self.verified_image = None
         return temp
 
 # rc = GestureRecognition()
