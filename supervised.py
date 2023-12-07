@@ -21,7 +21,7 @@ model = YOLO('antispoof.pt')
 face_classifier = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
-
+real_face = False
 button_width, button_height, font_size, font_size_total = 460, 70, 48, 60
 corner_radius, border_color, border_width = 8, "black", 2
 
@@ -58,6 +58,8 @@ def register_interface():
 def main_interface():
     global buttonRegister, buttonCheckIn, buttonBack
 
+    # disable the button
+
     buttonRegister = create_button(
         button_frame, "Register", register_interface, "#009946", "#007D39", "white")
     buttonRegister.pack(side="left", padx=10)
@@ -69,6 +71,13 @@ def main_interface():
     buttonBack = create_button(
         button_frame, "Back", back, "#F22C17", "#BF1200", "white")
     buttonBack.pack(side="left", padx=10)
+
+    if real_face == False:
+        buttonRegister.configure(state="disabled")
+        buttonCheckIn.configure(state="disabled")
+    else:
+        buttonRegister.configure(state="normal")
+        buttonCheckIn.configure(state="normal")
 
 
 def update_total_students_label():
@@ -86,6 +95,7 @@ def back():
 
 
 def update_frame():
+    global real_face
     ret, frame = cap.read()
     if ret:
         # Process frame with MediaPipe or other processing here
@@ -109,10 +119,28 @@ def update_frame():
             gr.reset_challenge()
 
             # update verified label
-            antispoof_label.configure(
-                text="AntiSpoofed: True", text_color="#009946")
+            liveness_label.configure(
+                text="Liveness: True", text_color="#009946")
 
-            print("Challenge Complete")
+            antispoof_label.configure(
+                text="Checking Spoof Face ...", text_color="#FF0000")
+
+            live_image = gr.access_verified_image()
+
+            # check whether the face is spoof
+            antispoof_results = model(
+                preprocess_image_antispoof(live_image))
+            # View results
+            thres = 0.7
+            for r in antispoof_results:
+                if (r.probs.data[0] > thres):
+                    antispoof_label.configure(
+                        text="Antispoof: True", text_color="#009946")
+                    real_face = True
+                else:
+                    antispoof_label.configure(
+                        text="Antispoof: False", text_color="#FF0000")
+                    real_face = False
 
         # Convert the frame to PhotoImage
         cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
@@ -178,32 +206,36 @@ def register_user(user_id):
 
         frame = gr.access_verified_image()
 
-        if (frame is None):
-            status_label.configure(text="Please complete the challenge first.")
-            return
+        if (real_face == False):
+            status_label.configure(
+                text="Please redo the challenge again.")
+            main_interface()
+        # if (frame is None):
+        #     status_label.configure(text="Please complete the challenge first.")
+        #     return
 
-        # check whether the face is spoof
-        antispoof_results = model(preprocess_image_antispoof(frame))
+        # # check whether the face is spoof
+        # antispoof_results = model(preprocess_image_antispoof(frame))
 
-        # View results
-        thres = 0.7
-        for r in antispoof_results:
-            if (r.probs.data[0] > thres):
-                liveness_label.configure(
-                    text="Liveness: True", text_color="#009946")
-            else:
-                liveness_label.configure(
-                    text="Liveness: False", text_color="#FF0000")
-                return
+        # # View results
+        # thres = 0.7
+        # for r in antispoof_results:
+        #     if (r.probs.data[0] > thres):
+        #         antispoof_label.configure(
+        #             text="Liveness: True", text_color="#009946")
+        #     else:
+        #         antispoof_label.configure(
+        #             text="Liveness: False", text_color="#FF0000")
+        #         return
 
         embedding = generate_embedding(frame)
         user_embeddings[user_id] = embedding
         status_label.configure(text=f"User {user_id} registered successfully.")
 
-        antispoof_label.configure(
-            text="AntiSpoofed: False", text_color="#FF0000")
         liveness_label.configure(
             text="Liveness: False", text_color="#FF0000")
+        antispoof_label.configure(
+            text="Antispoof: False", text_color="#FF0000")
         register_fill.pack_forget()
         buttonRegister.pack_forget()
 
@@ -231,23 +263,27 @@ def check_in():
 
         frame = gr.access_verified_image()
 
-        if (frame is None):
-            status_label.configure(text="Please complete the challenge first.")
-            return
+        if (real_face == False):
+            status_label.configure(
+                text="Please redo the challenge again.")
+            main_interface()
+        # if (frame is None):
+        #     status_label.configure(text="Please complete the challenge first.")
+        #     return
 
-        # check whether the face is spoof
-        antispoof_results = model(preprocess_image_antispoof(frame))
+        # # check whether the face is spoof
+        # antispoof_results = model(preprocess_image_antispoof(frame))
 
-        # View results
-        thres = 0.7
-        for r in antispoof_results:
-            if (r.probs.data[0] > thres):
-                liveness_label.configure(
-                    text="Liveness: True", text_color="#009946")
-            else:
-                liveness_label.configure(
-                    text="Liveness: False", text_color="#FF0000")
-                return
+        # # View results
+        # thres = 0.7
+        # for r in antispoof_results:
+        #     if (r.probs.data[0] > thres):
+        #         antispoof_label.configure(
+        #             text="Liveness: True", text_color="#009946")
+        #     else:
+        #         antispoof_label.configure(
+        #             text="Liveness: False", text_color="#FF0000")
+        #         return
 
         new_embedding = generate_embedding(frame)
         min_distance = float('inf')
@@ -269,11 +305,11 @@ def check_in():
         else:
             status_label.configure(text="User not recognized.")
 
-        antispoof_label.configure(
-            text="AntiSpoofed: False", text_color="#FF0000")
-
         liveness_label.configure(
             text="Liveness: False", text_color="#FF0000")
+
+        antispoof_label.configure(
+            text="Antispoof: False", text_color="#FF0000")
 
     except Exception as e:
         status_label.configure(text=f"Error during recognition: {str(e)}")
@@ -308,13 +344,13 @@ check_in_students_label = ctk.CTkLabel(
 # Positioned beside the video label
 check_in_students_label.grid(row=1, column=2, sticky="nw", padx=10)
 
+antispoof_label = ctk.CTkLabel(
+    main_frame, text="Antispoof: False", font=("Apple Garamond", font_size_total), text_color="#FF0000")
+antispoof_label.grid(row=1, column=2, sticky="sw", padx=10)
+
 liveness_label = ctk.CTkLabel(
     main_frame, text="Liveness: False", font=("Apple Garamond", font_size_total), text_color="#FF0000")
-liveness_label.grid(row=1, column=2, sticky="sw", padx=10)
-
-antispoof_label = ctk.CTkLabel(
-    main_frame, text="AntiSpoofed: False", font=("Apple Garamond", font_size_total), text_color="#FF0000")
-antispoof_label.grid(row=2, column=2, sticky="sw", padx=10)
+liveness_label.grid(row=2, column=2, sticky="sw", padx=10)
 
 # Format the gesture challenge list
 formatted_gesture_challenge = ', '.join(
