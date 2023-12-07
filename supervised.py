@@ -8,14 +8,20 @@ from customtkinter import FontManager
 from scipy.spatial.distance import cosine
 import tensorflow as tf
 import numpy as np
-
+from ultralytics import YOLO
 import GestureRecognition
 
 ################### INTERFACE ###################
 # BUTTONS
 FontManager.load_font("AppleGaramond.ttf")
 gr = GestureRecognition.GestureRecognition()
-none_spoofed_image = None
+# Load the antispoofing model
+model = YOLO('antispoof.pt')
+# Load the face classifier
+face_classifier = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
+
 button_width, button_height, font_size, font_size_total = 460, 70, 48, 60
 corner_radius, border_color, border_width = 8, "black", 2
 
@@ -70,7 +76,6 @@ def update_total_students_label():
         text=f"Total Students: {len(checked_in_students)}")
 
 
-
 def back():
     subprocess.Popen(["python", "app.py"])
     app.quit()
@@ -81,7 +86,6 @@ def back():
 
 
 def update_frame():
-    global none_spoofed_image
     ret, frame = cap.read()
     if ret:
         # Process frame with MediaPipe or other processing here
@@ -92,9 +96,10 @@ def update_frame():
               str(gr.skip_gesture_list) + " | " + str(gesture_detected))
 
         gr.update_challenge_state(gesture_detected)
-        
-        formatted_gesture_challenge = ', '.join([gesture.replace('_', ' ') for gesture in gr.gesture_challenge_list])
-        
+
+        formatted_gesture_challenge = ', '.join(
+            [gesture.replace('_', ' ') for gesture in gr.gesture_challenge_list])
+
         challenge_label.configure(
             text="Challenge: " + formatted_gesture_challenge
         )
@@ -104,7 +109,8 @@ def update_frame():
             gr.reset_challenge()
 
             # update verified label
-            verified_label.configure(text="AntiSpoofed: True", text_color="#009946")
+            antispoof_label.configure(
+                text="AntiSpoofed: True", text_color="#009946")
 
             print("Challenge Complete")
 
@@ -123,6 +129,32 @@ RECOGNITION_THRESHOLD = 0.3
 embedding_model = tf.keras.models.load_model('supervised_embedding.h5')
 
 user_embeddings = {}
+
+
+def crop_face(image):
+    margin_x = 30
+    margin_y = 50
+
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    face = face_classifier.detectMultiScale(
+        gray_image, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40)
+    )
+
+    for (x, y, w, h) in face:
+
+        # crop the detected face region
+        face_img = image[y - margin_y:y + h + margin_y,
+                         x - margin_x:x + w + margin_x]
+
+        return face_img
+
+
+def preprocess_image_antispoof(image):
+    image = crop_face(image)
+    image = cv2.resize(image, (640, 640))  # Resize image
+    cv2.imshow("image", image)
+    return image
 
 
 def preprocess_image(image):
@@ -151,11 +183,26 @@ def register_user(user_id):
             status_label.configure(text="Please complete the challenge first.")
             return
 
+        # check whether the face is spoof
+        antispoof_results = model(preprocess_image_antispoof(frame))
+
+        # View results
+        thres = 0.7
+        for r in antispoof_results:
+            if (r.probs.data[0] > thres):
+                liveness_label.configure(
+                    text="Liveness: True", text_color="#009946")
+            else:
+                liveness_label.configure(
+                    text="Liveness: False", text_color="#FF0000")
+                return
+
         embedding = generate_embedding(frame)
         user_embeddings[user_id] = embedding
         status_label.configure(text=f"User {user_id} registered successfully.")
 
-        verified_label.configure(text="AntiSpoofed: False", text_color = "#FF0000")
+        antispoof_label.configure(
+            text="AntiSpoofed: False", text_color="#FF0000")
         register_fill.pack_forget()
         buttonRegister.pack_forget()
 
@@ -164,10 +211,13 @@ def register_user(user_id):
         status_label.configure(text=f"Error during registration: {str(e)}")
         print(f"Error during registration: {str(e)}")
 
+
 def update_check_in_students_label():
     # Join all checked-in student names with a newline character
     students_list_str = '\n'.join(checked_in_students)
-    check_in_students_label.configure(text=f"Check-In Students:\n{students_list_str}")
+    check_in_students_label.configure(
+        text=f"Check-In Students:\n{students_list_str}")
+
 
 def check_in():
     global status_label, checked_in_students
@@ -184,6 +234,20 @@ def check_in():
             status_label.configure(text="Please complete the challenge first.")
             return
 
+        # check whether the face is spoof
+        antispoof_results = model(preprocess_image_antispoof(frame))
+
+        # View results
+        thres = 0.7
+        for r in antispoof_results:
+            if (r.probs.data[0] > thres):
+                liveness_label.configure(
+                    text="Liveness: True", text_color="#009946")
+            else:
+                liveness_label.configure(
+                    text="Liveness: False", text_color="#FF0000")
+                return
+
         new_embedding = generate_embedding(frame)
         min_distance = float('inf')
         recognized_user_id = "Unknown"
@@ -199,11 +263,13 @@ def check_in():
             checked_in_students.add(recognized_user_id)
             update_total_students_label()
             update_check_in_students_label()  # Update the check-in students label
-            status_label.configure(text=f"Recognized User: {recognized_user_id}")
+            status_label.configure(
+                text=f"Recognized User: {recognized_user_id}")
         else:
             status_label.configure(text="User not recognized.")
 
-        verified_label.configure(text="AntiSpoofed: False", text_color="#FF0000")
+        antispoof_label.configure(
+            text="AntiSpoofed: False", text_color="#FF0000")
 
     except Exception as e:
         status_label.configure(text=f"Error during recognition: {str(e)}")
@@ -238,12 +304,17 @@ check_in_students_label = ctk.CTkLabel(
 # Positioned beside the video label
 check_in_students_label.grid(row=1, column=2, sticky="nw", padx=10)
 
-verified_label = ctk.CTkLabel(
+liveness_label = ctk.CTkLabel(
+    main_frame, text="Liveness: False", font=("Apple Garamond", font_size_total), text_color="#FF0000")
+liveness_label.grid(row=1, column=2, sticky="sw", padx=10)
+
+antispoof_label = ctk.CTkLabel(
     main_frame, text="AntiSpoofed: False", font=("Apple Garamond", font_size_total), text_color="#FF0000")
-verified_label.grid(row=2, column=2, sticky="sw", padx=10)
+antispoof_label.grid(row=2, column=2, sticky="sw", padx=10)
 
 # Format the gesture challenge list
-formatted_gesture_challenge = ', '.join([gesture.replace('_', ' ') for gesture in gr.gesture_challenge_list])
+formatted_gesture_challenge = ', '.join(
+    [gesture.replace('_', ' ') for gesture in gr.gesture_challenge_list])
 
 # Create the label with the formatted text
 challenge_label = ctk.CTkLabel(
